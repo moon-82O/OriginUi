@@ -1,4 +1,4 @@
-local OriginUi = loadstring(game:HttpGet("https://raw.githubusercontent.com/VotreUser/VotreRepo/main/main.lua"))()
+local OriginUi = loadstring(game:HttpGet("https://raw.githubusercontent.com/moon-82O/OriginUi/refs/heads/main/main.lua"))()
 
 local Window = OriginUi:CreateWindow({
 	Title = "OriginUi",
