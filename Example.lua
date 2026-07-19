@@ -6,7 +6,7 @@ local Window = OriginUI:CreateWindow({
     Icon       = "◈",
     Theme      = OriginUI.Themes.Default,
     ToggleKey  = Enum.KeyCode.RightAlt,
-    Size       = Vector2.new(450, 500),
+    Size       = Vector2.new(500, 320),
 })
 
 local Home = Window:Tab({ Title = "Home", Icon = "⌂" })
