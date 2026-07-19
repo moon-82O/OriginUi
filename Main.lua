@@ -1,5 +1,5 @@
-local TryxLib = {}
-TryxLib.__index = TryxLib
+local OriginUI = {}
+OriginUI.__index = OriginUI
 
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
@@ -178,14 +178,6 @@ local function pad(p, t, b, l, r)
     return u
 end
 
-local function gradient(p, seq, rot)
-    local g = Instance.new("UIGradient")
-    g.Color    = seq or ColorSequence.new({ ColorSequenceKeypoint.new(0,Color3.new(1,1,1)), ColorSequenceKeypoint.new(1,Color3.fromRGB(200,200,200)) })
-    g.Rotation = rot or 90
-    g.Parent   = p
-    return g
-end
-
 local function frame(parent, bg, size, pos, zi)
     local f = Instance.new("Frame")
     f.BackgroundColor3 = bg or Color3.fromRGB(20,20,20)
@@ -255,12 +247,12 @@ end
 local function makeDraggable(handle, target)
     local dragging, ds, sp = false, nil, nil
     handle.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
             dragging = true; ds = i.Position; sp = target.Position
         end
     end)
     UserInputService.InputChanged:Connect(function(i)
-        if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
             local d = i.Position - ds
             local vp = workspace.CurrentCamera.ViewportSize
             target.Position = UDim2.new(0,
@@ -271,7 +263,9 @@ local function makeDraggable(handle, target)
         end
     end)
     UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
     end)
 end
 
@@ -334,7 +328,7 @@ local function getNotifContainer()
         return notifyGui:FindFirstChild("Container")
     end
     local g = Instance.new("ScreenGui")
-    g.Name           = "TryxLib_Notify"
+    g.Name           = "OriginUI_Notify"
     g.ResetOnSpawn   = false
     g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     g.DisplayOrder   = 1000
@@ -468,7 +462,9 @@ local function titleDesc(parent, theme, cfg, offsetR, y)
     return tl
 end
 
-local function injectElements(Tab, theme, page)
+local activeDropdownClose = nil
+
+local function injectElements(Tab, theme, page, gui)
 
     function Tab:Button(cfg)
         cfg = cfg or {}
@@ -661,7 +657,7 @@ local function injectElements(Tab, theme, page)
         local disabled = cfg.Disabled or false
 
         local hasDesc = cfg.Desc and cfg.Desc ~= ""
-        local h       = (hasDesc and 82 or 66) + (showInp and 0 or 0)
+        local h       = hasDesc and 82 or 66
 
         local f = frame(page, cfg.Color or theme.Element, UDim2.new(1,0,0,h))
         f.BorderSizePixel = 0
@@ -748,16 +744,24 @@ local function injectElements(Tab, theme, page)
         end
 
         trackBg.InputBegan:Connect(function(i)
-            if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=true; updateSlider(i.Position.X) end
+            if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+                dragging=true; updateSlider(i.Position.X)
+            end
         end)
         thumb.InputBegan:Connect(function(i)
-            if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=true end
+            if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+                dragging=true
+            end
         end)
         UserInputService.InputChanged:Connect(function(i)
-            if dragging and i.UserInputType==Enum.UserInputType.MouseMovement then updateSlider(i.Position.X) end
+            if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+                updateSlider(i.Position.X)
+            end
         end)
         UserInputService.InputEnded:Connect(function(i)
-            if i.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end
+            if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+                dragging=false
+            end
         end)
 
         if disabled then f.BackgroundTransparency=0.4 end
@@ -815,10 +819,17 @@ local function injectElements(Tab, theme, page)
         corner(listCont, CORNER_EL)
         stroke(listCont, theme.ElementStroke, 1)
 
+        local function closeList()
+            if not open then return end
+            open = false
+            tw(listCont,{Size=UDim2.new(0,104,0,0)})
+            task.delay(0.15, function() listCont.Parent=nil end)
+            tw(chev,{Rotation=0})
+        end
+
         local function positionList()
-            local sg = Tab._gui
-            if not sg then return end
-            listCont.Parent = sg
+            if not gui then return end
+            listCont.Parent = gui
             local abs = selBox.AbsolutePosition
             local sz  = selBox.AbsoluteSize
             listCont.Position = UDim2.new(0, abs.X, 0, abs.Y + sz.Y + 4)
@@ -888,10 +899,7 @@ local function injectElements(Tab, theme, page)
                     else
                         value = v
                         selLbl.Text = v
-                        open = false
-                        tw(listCont,{Size=UDim2.new(0,104,0,0)})
-                        task.delay(0.15, function() listCont.Parent=nil end)
-                        tw(chev,{Rotation=0})
+                        closeList()
                         buildList()
                         task.spawn(function() pcall(cfg.Callback or function()end, value) end)
                     end
@@ -911,14 +919,18 @@ local function injectElements(Tab, theme, page)
         end)
         mb.MouseButton1Click:Connect(function()
             if disabled then return end
+            if activeDropdownClose and activeDropdownClose ~= closeList then
+                activeDropdownClose()
+            end
             open = not open
             local ih = math.min(#values,6)*30+8
             if open then
+                activeDropdownClose = closeList
                 positionList()
                 tw(listCont,{Size=UDim2.new(0,104,0,ih)})
             else
-                tw(listCont,{Size=UDim2.new(0,104,0,0)})
-                task.delay(0.15, function() if not open then listCont.Parent=nil end end)
+                activeDropdownClose = nil
+                closeList()
             end
             tw(chev,{Rotation=open and 180 or 0})
         end)
@@ -926,7 +938,7 @@ local function injectElements(Tab, theme, page)
         if disabled then f.BackgroundTransparency=0.4 end
         f.Parent = page
 
-        local obj = {_frame=f}
+        local obj = {_frame=f, _close=closeList}
         function obj:Get() return multi and selected or value end
         function obj:Set(v) if multi then selected=v else value=v end; selLbl.Text=getDisplay(); buildList() end
         function obj:Refresh(nv) values=nv; buildList() end
@@ -1149,6 +1161,7 @@ local function injectElements(Tab, theme, page)
 
         local f = frame(page, cfg.Color or theme.CardBg, UDim2.new(1,0,0,h))
         f.BorderSizePixel = 0
+        f.ClipsDescendants = true
         corner(f, CORNER_EL)
         stroke(f, theme.CardStroke, 1)
         pad(f, 10,10,14,14)
@@ -1181,7 +1194,7 @@ local function injectElements(Tab, theme, page)
         if cfg.Desc and cfg.Desc~="" then
             local dl = lbl(f, cfg.Desc, theme.TextSecondary, 11, Enum.Font.Gotham)
             dl.Size     = UDim2.new(1,0,0,14)
-            dl.Position = UDim2.new(0,0,1,-18)
+            dl.Position = UDim2.new(0,0,1,-16)
         end
 
         if cfg.Callback then
@@ -1225,6 +1238,7 @@ local function injectElements(Tab, theme, page)
             local cw = math.floor((1/n)*100)
             local cf = frame(rowF, cc.Color or theme.CardBg, UDim2.new(cw/100, i<n and -4 or 0, 1,0))
             cf.BorderSizePixel = 0
+            cf.ClipsDescendants = true
             corner(cf, CORNER_EL)
             stroke(cf, theme.CardStroke, 1)
             pad(cf, 10,10,12,12)
@@ -1239,7 +1253,7 @@ local function injectElements(Tab, theme, page)
             if cc.Value~=nil then
                 vl = lbl(cf, tostring(cc.Value), cc.ValueColor or theme.Accent, 18, Enum.Font.GothamBold)
                 vl.Size     = UDim2.new(1,0,0,22)
-                vl.Position = UDim2.new(0,0,0,16)
+                vl.Position = UDim2.new(0,0,0,18)
             end
 
             if cc.Sub then
@@ -1263,16 +1277,23 @@ local function injectElements(Tab, theme, page)
         local username = cfg.Username or LocalPlayer.Name
         local desc     = cfg.Desc     or LocalPlayer.Name
         local badges   = cfg.Badges   or {}
+        local showBar  = cfg.Bar      or false
 
         local h = 82 + (#badges>0 and 10 or 0)
         local f = frame(page, cfg.Color or theme.ProfileBg, UDim2.new(1,0,0,h))
         f.BorderSizePixel = 0
+        f.ClipsDescendants = false
         corner(f, CORNER_EL)
         stroke(f, theme.CardStroke, 1)
 
-        local strip = frame(f, theme.Accent, UDim2.new(1,0,0,3))
-        strip.BackgroundTransparency = 0.75
-        corner(strip, UDim.new(0,2))
+        if showBar then
+            local clipWrap = frame(f, Color3.fromRGB(0,0,0), UDim2.new(1,0,0,3))
+            clipWrap.BackgroundTransparency = 1
+            clipWrap.ClipsDescendants = true
+            clipWrap.ZIndex = 2
+            local strip = frame(clipWrap, theme.Accent, UDim2.new(1,0,1,0))
+            strip.BackgroundTransparency = 0.75
+        end
 
         local avBg = frame(f, theme.ElementStroke, UDim2.new(0,52,0,52))
         avBg.Position = UDim2.new(0,14,0.5,-26)
@@ -1369,8 +1390,16 @@ local function injectElements(Tab, theme, page)
         local disabled = cfg.Disabled or false
         local open     = false
 
-        local f = baseEl(theme, cfg)
-        f.ClipsDescendants = false
+        local baseH = ELEMENT_H
+        if cfg.Desc and cfg.Desc ~= "" then baseH = baseH + 16 end
+
+        local f = frame(page, cfg.Color or theme.Element, UDim2.new(1,0,0,baseH))
+        f.BorderSizePixel  = 0
+        f.ClipsDescendants = true
+        corner(f, CORNER_EL)
+        stroke(f, theme.ElementStroke, 1)
+        pad(f, 0,0,14,14)
+
         titleDesc(f, theme, cfg, 48)
 
         local preview = frame(f, value, UDim2.new(0,30,0,22))
@@ -1378,17 +1407,32 @@ local function injectElements(Tab, theme, page)
         corner(preview, CORNER_SM)
         stroke(preview, theme.ElementStroke, 1)
 
-        local panel = frame(f, theme.Element, UDim2.new(0,210,0,0))
-        panel.Position         = UDim2.new(0,0,0,(f.Size.Y.Offset or ELEMENT_H)+4)
-        panel.ClipsDescendants = true
-        panel.ZIndex           = 20
-        corner(panel, CORNER_EL)
-        stroke(panel, theme.ElementStroke, 1)
-        pad(panel,10,10,12,12)
+        local PANEL_H = 22*3+6*2+20+24
+
+        local panelCont = frame(nil, theme.Element, UDim2.new(0,0,0,0))
+        panelCont.ClipsDescendants = true
+        panelCont.ZIndex           = 20
+        corner(panelCont, CORNER_EL)
+        stroke(panelCont, theme.ElementStroke, 1)
+
+        local function positionPanel()
+            if not gui then return end
+            panelCont.Parent = gui
+            local abs = f.AbsolutePosition
+            local sz  = f.AbsoluteSize
+            panelCont.Position = UDim2.new(0, abs.X, 0, abs.Y + sz.Y + 4)
+            panelCont.Size     = UDim2.new(0, sz.X, 0, 0)
+        end
+
+        local panelInner = Instance.new("Frame")
+        panelInner.Size = UDim2.fromScale(1,1)
+        panelInner.BackgroundTransparency = 1
+        panelInner.Parent = panelCont
+        pad(panelInner,10,10,12,12)
 
         local play = Instance.new("UIListLayout")
         play.Padding = UDim.new(0,6)
-        play.Parent  = panel
+        play.Parent  = panelInner
 
         local rgb = { math.floor(value.R*255), math.floor(value.G*255), math.floor(value.B*255) }
 
@@ -1401,7 +1445,7 @@ local function injectElements(Tab, theme, page)
         local channels = {{name="R",idx=1,col=Color3.fromRGB(220,60,60)},{name="G",idx=2,col=Color3.fromRGB(60,200,80)},{name="B",idx=3,col=Color3.fromRGB(60,120,220)}}
 
         for _,ch in ipairs(channels) do
-            local row = frame(panel, Color3.fromRGB(0,0,0), UDim2.new(1,0,0,22))
+            local row = frame(panelInner, Color3.fromRGB(0,0,0), UDim2.new(1,0,0,22))
             row.BackgroundTransparency = 1
 
             local cl = lbl(row, ch.name, theme.TextSecondary, 10, Enum.Font.GothamBold)
@@ -1448,7 +1492,7 @@ local function injectElements(Tab, theme, page)
 
             local drag2 = false
             tr.InputBegan:Connect(function(i)
-                if i.UserInputType==Enum.UserInputType.MouseButton1 then
+                if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
                     drag2=true
                     local r2=math.clamp((i.Position.X-tr.AbsolutePosition.X)/tr.AbsoluteSize.X,0,1)
                     rgb[ch.idx]=math.floor(r2*255); vi.Text=tostring(rgb[ch.idx])
@@ -1457,7 +1501,7 @@ local function injectElements(Tab, theme, page)
                 end
             end)
             UserInputService.InputChanged:Connect(function(i)
-                if drag2 and i.UserInputType==Enum.UserInputType.MouseMovement then
+                if drag2 and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
                     local r2=math.clamp((i.Position.X-tr.AbsolutePosition.X)/tr.AbsoluteSize.X,0,1)
                     rgb[ch.idx]=math.floor(r2*255); vi.Text=tostring(rgb[ch.idx])
                     tw(fi,{Size=UDim2.new(r2,0,1,0)},0.05); tw(th2,{Position=UDim2.new(r2,0,0.5,0)},0.05)
@@ -1465,16 +1509,23 @@ local function injectElements(Tab, theme, page)
                 end
             end)
             UserInputService.InputEnded:Connect(function(i)
-                if i.UserInputType==Enum.UserInputType.MouseButton1 then drag2=false end
+                if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+                    drag2=false
+                end
             end)
         end
 
-        local b = btn(f)
+        local b = btn(f, UDim2.fromScale(1,1), nil, 3)
         b.MouseButton1Click:Connect(function()
             if disabled then return end
             open = not open
-            local ph = open and (22*3+6*2+20) or 0
-            tw(panel,{Size=UDim2.new(0,210,0,ph)})
+            if open then
+                positionPanel()
+                tw(panelCont,{Size=UDim2.new(0, f.AbsoluteSize.X, 0, PANEL_H)})
+            else
+                tw(panelCont,{Size=UDim2.new(0, f.AbsoluteSize.X, 0, 0)})
+                task.delay(0.18, function() if not open then panelCont.Parent=nil end end)
+            end
         end)
         b.MouseEnter:Connect(function() if not disabled then tw(f,{BackgroundColor3=theme.ElementHover}) end end)
         b.MouseLeave:Connect(function() if not disabled then tw(f,{BackgroundColor3=cfg.Color or theme.Element}) end end)
@@ -1525,20 +1576,203 @@ local function injectElements(Tab, theme, page)
         return f
     end
 
+    function Tab:ProgressBar(cfg)
+        cfg = cfg or {}
+        local value   = math.clamp(cfg.Value or 0, 0, 100)
+        local suffix  = cfg.Suffix or "%"
+        local showPct = cfg.ShowValue ~= false
+
+        local h = (cfg.Desc and cfg.Desc ~= "") and 72 or 58
+        local f = frame(page, cfg.Color or theme.Element, UDim2.new(1,0,0,h))
+        f.BorderSizePixel = 0
+        f.ClipsDescendants = true
+        corner(f, CORNER_EL)
+        stroke(f, theme.ElementStroke, 1)
+        pad(f, 0,0,14,14)
+
+        local tl = lbl(f, cfg.Title or "Progress", theme.TextPrimary, 13, Enum.Font.GothamMedium)
+        tl.Size     = UDim2.new(1,-60,0,16)
+        tl.Position = UDim2.new(0,0,0,10)
+
+        local pctLbl = nil
+        if showPct then
+            pctLbl = lbl(f, tostring(math.floor(value))..suffix, theme.Accent, 11, Enum.Font.GothamBold, Enum.TextXAlignment.Right)
+            pctLbl.Size     = UDim2.new(0,54,0,16)
+            pctLbl.Position = UDim2.new(1,-56,0,10)
+        end
+
+        local hasDesc = cfg.Desc and cfg.Desc ~= ""
+        if hasDesc then
+            local dl = lbl(f, cfg.Desc, theme.TextSecondary, 11, Enum.Font.Gotham)
+            dl.Size     = UDim2.new(1,-60,0,13)
+            dl.Position = UDim2.new(0,0,0,27)
+        end
+
+        local trackY = hasDesc and 50 or 34
+        local trackBg = frame(f, theme.ElementStroke, UDim2.new(1,0,0,7))
+        trackBg.Position = UDim2.new(0,0,0,trackY)
+        corner(trackBg, UDim.new(1,0))
+
+        local fill = frame(trackBg, cfg.FillColor or theme.Accent, UDim2.new(value/100,0,1,0))
+        corner(fill, UDim.new(1,0))
+
+        f.Parent = page
+
+        local obj = {_frame=f}
+        function obj:Set(v)
+            v = math.clamp(v,0,100)
+            value = v
+            tw(fill,{Size=UDim2.new(v/100,0,1,0)})
+            if pctLbl then pctLbl.Text=tostring(math.floor(v))..suffix end
+        end
+        function obj:Get() return value end
+        return obj
+    end
+
+    function Tab:Countdown(cfg)
+        cfg = cfg or {}
+        local seconds  = cfg.Seconds  or 60
+        local fmt      = cfg.Format   or "MM:SS"
+        local autoStart = cfg.AutoStart ~= false
+        local remaining = seconds
+        local running   = false
+        local heartbeat = nil
+
+        local h = 58
+        local f = frame(page, cfg.Color or theme.Element, UDim2.new(1,0,0,h))
+        f.BorderSizePixel = 0
+        f.ClipsDescendants = true
+        corner(f, CORNER_EL)
+        stroke(f, theme.ElementStroke, 1)
+        pad(f, 0,0,14,14)
+
+        local tl = lbl(f, cfg.Title or "Countdown", theme.TextPrimary, 13, Enum.Font.GothamMedium)
+        tl.Size     = UDim2.new(1,-100,0,16)
+        tl.Position = UDim2.new(0,0,0,10)
+
+        local function formatTime(s)
+            if fmt == "SS" then
+                return tostring(math.floor(s)).."s"
+            end
+            local m = math.floor(s/60)
+            local sec = math.floor(s%60)
+            return string.format("%02d:%02d", m, sec)
+        end
+
+        local timeLbl = lbl(f, formatTime(remaining), theme.Accent, 18, Enum.Font.GothamBold, Enum.TextXAlignment.Right)
+        timeLbl.Size     = UDim2.new(0,90,0,26)
+        timeLbl.Position = UDim2.new(1,-92,0.5,-13)
+
+        local trackBg = frame(f, theme.ElementStroke, UDim2.new(1,0,0,4))
+        trackBg.Position = UDim2.new(0,0,1,-6)
+        corner(trackBg, UDim.new(1,0))
+
+        local fill = frame(trackBg, cfg.FillColor or theme.Accent, UDim2.new(1,0,1,0))
+        corner(fill, UDim.new(1,0))
+
+        local function stop()
+            running = false
+            if heartbeat then heartbeat:Disconnect(); heartbeat=nil end
+        end
+
+        local function start()
+            if running then return end
+            running = true
+            local last = tick()
+            heartbeat = RunService.Heartbeat:Connect(function()
+                local now = tick()
+                local dt  = now - last
+                last       = now
+                remaining  = math.max(0, remaining - dt)
+                timeLbl.Text = formatTime(remaining)
+                fill.Size    = UDim2.new(remaining/seconds,0,1,0)
+                if remaining <= 0 then
+                    stop()
+                    task.spawn(function() pcall(cfg.OnEnd or function()end) end)
+                end
+            end)
+        end
+
+        if autoStart then start() end
+        f.Parent = page
+
+        local obj = {_frame=f}
+        function obj:Start() start() end
+        function obj:Stop()  stop()  end
+        function obj:Reset()
+            stop()
+            remaining = seconds
+            timeLbl.Text = formatTime(remaining)
+            fill.Size    = UDim2.new(1,0,1,0)
+        end
+        function obj:Get() return remaining end
+        return obj
+    end
+
+    function Tab:Table(cfg)
+        cfg = cfg or {}
+        local headers = cfg.Headers or {}
+        local rows    = cfg.Rows    or {}
+        local rowH    = 28
+        local headH   = 30
+        local totalH  = headH + #rows * rowH + 20
+
+        local f = frame(page, cfg.Color or theme.Element, UDim2.new(1,0,0,totalH))
+        f.BorderSizePixel = 0
+        f.ClipsDescendants = true
+        corner(f, CORNER_EL)
+        stroke(f, theme.ElementStroke, 1)
+
+        if cfg.Title and cfg.Title ~= "" then
+            local tl = lbl(f, cfg.Title, theme.TextPrimary, 13, Enum.Font.GothamBold)
+            tl.Size     = UDim2.new(1,0,0,16)
+            tl.Position = UDim2.new(0,14,0,8)
+            f.Size      = UDim2.new(1,0,0,totalH+24)
+        end
+
+        local yOff = (cfg.Title and cfg.Title ~= "") and 28 or 8
+        local colW  = #headers > 0 and (1/#headers) or 1
+
+        local headRow = frame(f, theme.BackgroundAlt, UDim2.new(1,-2,0,headH))
+        headRow.Position = UDim2.new(0,1,0,yOff)
+
+        for i, h in ipairs(headers) do
+            local hl = lbl(headRow, h, theme.TextSecondary, 10, Enum.Font.GothamBold)
+            hl.Size     = UDim2.new(colW,0,1,0)
+            hl.Position = UDim2.new(colW*(i-1),0,0,0)
+            pad(hl,0,0,10,0)
+        end
+
+        for ri, row in ipairs(rows) do
+            local rowBg = frame(f, ri%2==0 and theme.Element or theme.BackgroundAlt, UDim2.new(1,-2,0,rowH))
+            rowBg.Position = UDim2.new(0,1,0,yOff+headH+(ri-1)*rowH)
+
+            for ci, cell in ipairs(row) do
+                local cl = lbl(rowBg, tostring(cell), theme.TextPrimary, 11, Enum.Font.Gotham)
+                cl.Size     = UDim2.new(colW,0,1,0)
+                cl.Position = UDim2.new(colW*(ci-1),0,0,0)
+                pad(cl,0,0,10,0)
+            end
+        end
+
+        f.Parent = page
+        return {_frame=f}
+    end
+
 end
 
-function TryxLib:CreateWindow(config)
+function OriginUI:CreateWindow(config)
     config = config or {}
 
     local theme     = config.Theme    or Themes.Default
-    local title     = config.Title    or "TryxLib"
+    local title     = config.Title    or "OriginUI"
     local subtitle  = config.Subtitle or ""
     local icon      = config.Icon     or "★"
     local winSize   = config.Size     or Vector2.new(DEFAULT_W, DEFAULT_H)
     local toggleKey = config.ToggleKey or Enum.KeyCode.RightAlt
 
     local gui = Instance.new("ScreenGui")
-    gui.Name            = "TryxLib_"..title:gsub("%s","")
+    gui.Name            = "OriginUI_"..title:gsub("%s","")
     gui.ResetOnSpawn    = false
     gui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
     gui.DisplayOrder    = 500
@@ -1590,32 +1824,35 @@ function TryxLib:CreateWindow(config)
         subLbl.Position = UDim2.new(0,0,0,23)
     end
 
-    local btnCont = frame(topBar, Color3.fromRGB(0,0,0), UDim2.new(0,60,1,0))
+    local btnCont = frame(topBar, Color3.fromRGB(0,0,0), UDim2.new(0,86,1,0))
     btnCont.BackgroundTransparency = 1
     local btnLay = Instance.new("UIListLayout")
     btnLay.FillDirection        = Enum.FillDirection.Horizontal
     btnLay.HorizontalAlignment  = Enum.HorizontalAlignment.Right
     btnLay.VerticalAlignment    = Enum.VerticalAlignment.Center
-    btnLay.Padding              = UDim.new(0,7)
+    btnLay.Padding              = UDim.new(0,4)
     btnLay.Parent               = btnCont
 
-    local function winBtn(col, darkCol)
+    local function winIconBtn(icon2, col, hoverCol)
         local b = Instance.new("TextButton")
-        b.Size             = UDim2.new(0,12,0,12)
-        b.BackgroundColor3 = col
-        b.Text             = ""
+        b.Size             = UDim2.new(0,24,0,22)
+        b.BackgroundColor3 = theme.Element
+        b.Text             = icon2
+        b.TextColor3       = col
+        b.TextSize         = 13
+        b.Font             = Enum.Font.GothamBold
         b.BorderSizePixel  = 0
         b.AutoButtonColor  = false
         b.Parent           = btnCont
-        corner(b, UDim.new(1,0))
-        b.MouseEnter:Connect(function() tw(b,{BackgroundColor3=darkCol or col}) end)
-        b.MouseLeave:Connect(function() tw(b,{BackgroundColor3=col}) end)
+        corner(b, CORNER_SM)
+        b.MouseEnter:Connect(function() tw(b,{BackgroundColor3=theme.ElementHover, TextColor3=hoverCol or col}) end)
+        b.MouseLeave:Connect(function() tw(b,{BackgroundColor3=theme.Element, TextColor3=col}) end)
         return b
     end
 
-    local closeBtn = winBtn(theme.Danger,   theme.DangerDark)
-    local minBtn   = winBtn(theme.Warning,  theme.WarningDark)
-    local maxBtn   = winBtn(theme.Success,  theme.SuccessDark)
+    local closeBtn = winIconBtn("✕", theme.Danger,   theme.Danger)
+    local minBtn   = winIconBtn("—", theme.Warning,  theme.Warning)
+    local maxBtn   = winIconBtn("□", theme.Success,  theme.Success)
 
     local sidebar = frame(win, theme.Sidebar,
         UDim2.new(0,SIDEBAR_W,1,-TOPBAR_H),
@@ -1626,7 +1863,7 @@ function TryxLib:CreateWindow(config)
     local sideSep = frame(sidebar, theme.ElementStroke, UDim2.new(0,1,1,0))
     sideSep.Position = UDim2.new(1,0,0,0)
 
-    local verLbl = lbl(sidebar, "TryxLib v2.0", theme.TextDisabled, 9, Enum.Font.Gotham, Enum.TextXAlignment.Center)
+    local verLbl = lbl(sidebar, "OriginUI v1.0", theme.TextDisabled, 9, Enum.Font.Gotham, Enum.TextXAlignment.Center)
     verLbl.Size     = UDim2.new(1,0,0,16)
     verLbl.Position = UDim2.new(0,0,1,-18)
 
@@ -1653,6 +1890,13 @@ function TryxLib:CreateWindow(config)
     )
     content.Name             = "Content"
     content.ClipsDescendants = true
+
+    local bottomBar = frame(win, theme.ElementStroke, UDim2.new(1,0,0,18))
+    bottomBar.Position           = UDim2.new(0,0,1,-18)
+    bottomBar.BackgroundTransparency = 0.65
+    bottomBar.ZIndex             = 6
+    corner(bottomBar, UDim.new(0,4))
+    makeDraggable(bottomBar, win)
 
     local resizeH = Instance.new("TextButton")
     resizeH.Size             = UDim2.new(0,16,0,16)
@@ -1695,12 +1939,12 @@ function TryxLib:CreateWindow(config)
         minimized = not minimized
         if minimized then
             prevSize = win.Size
-            content.Visible=false; sidebar.Visible=false; resizeH.Visible=false
             tw(win,{Size=UDim2.new(0,win.Size.X.Offset,0,TOPBAR_H)},ANIM_MED)
-        else
-            tw(win,{Size=prevSize},ANIM_MED)
             task.wait(ANIM_MED)
-            content.Visible=true; sidebar.Visible=true; resizeH.Visible=true
+            content.Visible=false; sidebar.Visible=false; resizeH.Visible=false; bottomBar.Visible=false
+        else
+            content.Visible=true; sidebar.Visible=true; resizeH.Visible=true; bottomBar.Visible=true
+            tw(win,{Size=prevSize},ANIM_MED)
         end
     end)
 
@@ -1734,6 +1978,10 @@ function TryxLib:CreateWindow(config)
     local active = nil
 
     local function setActive(page, entry)
+        if activeDropdownClose then
+            activeDropdownClose()
+            activeDropdownClose = nil
+        end
         if active then active.page.Visible=false end
         active = entry
         page.Visible = true
@@ -1774,16 +2022,16 @@ function TryxLib:CreateWindow(config)
         rowLay.Parent            = tabBtn
         pad(tabBtn,0,0,12,8)
 
-        local iconLbl = nil
+        local iconLbl2 = nil
         if tabIcon then
-            iconLbl = lbl(tabBtn, tabIcon, theme.TextDisabled, 12, Enum.Font.GothamMedium, Enum.TextXAlignment.Center)
-            iconLbl.Size  = UDim2.new(0,14,1,0)
-            iconLbl.ZIndex = 5
+            iconLbl2 = lbl(tabBtn, tabIcon, theme.TextDisabled, 12, Enum.Font.GothamMedium, Enum.TextXAlignment.Center)
+            iconLbl2.Size  = UDim2.new(0,14,1,0)
+            iconLbl2.ZIndex = 5
         end
 
-        local titleLbl = lbl(tabBtn, tabTitle, theme.TextSecondary, 12, Enum.Font.GothamMedium)
-        titleLbl.Size   = UDim2.new(1,-36,1,0)
-        titleLbl.ZIndex = 5
+        local titleLbl2 = lbl(tabBtn, tabTitle, theme.TextSecondary, 12, Enum.Font.GothamMedium)
+        titleLbl2.Size   = UDim2.new(1,-36,1,0)
+        titleLbl2.ZIndex = 5
 
         local page = Instance.new("ScrollingFrame")
         page.Size                   = UDim2.fromScale(1,1)
@@ -1802,7 +2050,7 @@ function TryxLib:CreateWindow(config)
         pageLay.Parent              = page
         pad(page,10,12,10,10)
 
-        local entry = {btn=tabBtn,accent=accentBar,titleLbl=titleLbl,iconLbl=iconLbl,page=page}
+        local entry = {btn=tabBtn,accent=accentBar,titleLbl=titleLbl2,iconLbl=iconLbl2,page=page}
         table.insert(tabs,entry)
 
         tabBtn.MouseEnter:Connect(function()
@@ -1824,7 +2072,7 @@ function TryxLib:CreateWindow(config)
         Tab._page  = page
         Tab._gui   = gui
         function Tab:_addElement(e) e.Parent=page end
-        injectElements(Tab,theme,page)
+        injectElements(Tab,theme,page,gui)
         return Tab
     end
 
@@ -1852,10 +2100,10 @@ function TryxLib:CreateWindow(config)
     return Window
 end
 
-TryxLib.Themes = Themes
+OriginUI.Themes = Themes
 
-function TryxLib:Notify(cfg)
+function OriginUI:Notify(cfg)
     doNotify(cfg, Themes.Default)
 end
 
-return TryxLib
+return OriginUI
