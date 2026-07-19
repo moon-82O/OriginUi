@@ -745,12 +745,12 @@ local function injectElements(Tab, theme, page, gui)
 
         trackBg.InputBegan:Connect(function(i)
             if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-                dragging=true; updateSlider(i.Position.X)
+                dragging=true; page.ScrollingEnabled=false; updateSlider(i.Position.X)
             end
         end)
         thumb.InputBegan:Connect(function(i)
             if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-                dragging=true
+                dragging=true; page.ScrollingEnabled=false
             end
         end)
         UserInputService.InputChanged:Connect(function(i)
@@ -760,7 +760,7 @@ local function injectElements(Tab, theme, page, gui)
         end)
         UserInputService.InputEnded:Connect(function(i)
             if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-                dragging=false
+                if dragging then dragging=false; page.ScrollingEnabled=true end
             end
         end)
 
@@ -789,6 +789,7 @@ local function injectElements(Tab, theme, page, gui)
         local selected = {}
         local open     = false
         local disabled = cfg.Disabled or false
+        local posConn  = nil
 
         local f = frame(page, cfg.Color or theme.Element, UDim2.new(1,0,0,ELEMENT_H))
         f.BorderSizePixel  = 0
@@ -813,27 +814,51 @@ local function injectElements(Tab, theme, page, gui)
         chev.Size     = UDim2.new(0,18,1,0)
         chev.Position = UDim2.new(1,-20,0,0)
 
-        local listCont = frame(nil, theme.Element, UDim2.new(0,104,0,0))
+        local listCont = frame(nil, theme.BackgroundAlt, UDim2.new(0,104,0,0))
         listCont.ClipsDescendants = true
-        listCont.ZIndex           = 999
+        listCont.ZIndex           = 200
         corner(listCont, CORNER_EL)
-        stroke(listCont, theme.ElementStroke, 1)
+        stroke(listCont, theme.Accent, 1)
 
-        local function closeList()
-            if not open then return end
+        local function doClose()
             open = false
-            tw(listCont,{Size=UDim2.new(0,104,0,0)})
-            task.delay(0.15, function() listCont.Parent=nil end)
-            tw(chev,{Rotation=0})
+            if posConn then posConn:Disconnect(); posConn = nil end
+            local w = math.max(listCont.AbsoluteSize.X, 104)
+            tw(listCont, {Size=UDim2.new(0,w,0,0)})
+            task.delay(ANIM_MED+0.02, function()
+                if not open then listCont.Parent = nil end
+            end)
+            tw(chev, {Rotation=0})
+            if activeDropdownClose == doClose then activeDropdownClose = nil end
         end
 
-        local function positionList()
+        local function doOpen()
+            if activeDropdownClose and activeDropdownClose ~= doClose then
+                activeDropdownClose()
+            end
+            open = true
+            activeDropdownClose = doClose
+
             if not gui then return end
             listCont.Parent = gui
+
             local abs = selBox.AbsolutePosition
             local sz  = selBox.AbsoluteSize
-            listCont.Position = UDim2.new(0, abs.X, 0, abs.Y + sz.Y + 4)
-            listCont.Size     = UDim2.new(0, 104, 0, 0)
+            local w   = math.max(sz.X + 2, 104)
+            local ih  = math.min(#values, 6) * 30 + 8
+
+            listCont.Size     = UDim2.new(0, w, 0, 0)
+            listCont.Position = UDim2.new(0, abs.X, 0, abs.Y + sz.Y + 2)
+
+            tw(listCont, {Size=UDim2.new(0,w,0,ih)})
+            tw(chev, {Rotation=180})
+
+            posConn = RunService.RenderStepped:Connect(function()
+                if not open or not listCont.Parent then return end
+                local a2 = selBox.AbsolutePosition
+                local s2 = selBox.AbsoluteSize
+                listCont.Position = UDim2.new(0, a2.X, 0, a2.Y + s2.Y + 2)
+            end)
         end
 
         local listScroll = Instance.new("ScrollingFrame")
@@ -844,7 +869,7 @@ local function injectElements(Tab, theme, page, gui)
         listScroll.CanvasSize          = UDim2.new(0,0,0,0)
         listScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
         listScroll.BorderSizePixel     = 0
-        listScroll.ZIndex              = 1000
+        listScroll.ZIndex              = 201
         listScroll.Parent              = listCont
         pad(listScroll, 4,4,4,4)
 
@@ -856,7 +881,7 @@ local function injectElements(Tab, theme, page, gui)
             if multi then
                 if #selected==0 then return "None" end
                 if #selected==1 then return selected[1] end
-                return selected[1].." +"..#selected-1
+                return selected[1].." +"..tostring(#selected-1)
             end
             return value
         end
@@ -870,23 +895,23 @@ local function injectElements(Tab, theme, page, gui)
 
                 local itemF = frame(listScroll, isSel and theme.ElementActive or theme.Element, UDim2.new(1,0,0,28))
                 itemF.BorderSizePixel = 0
-                itemF.ZIndex          = 102
+                itemF.ZIndex          = 202
                 corner(itemF, UDim.new(0,5))
                 if isSel then stroke(itemF, theme.Accent, 1) end
 
                 local itemL = lbl(itemF, v, isSel and theme.Accent or theme.TextPrimary, 11, Enum.Font.Gotham)
                 itemL.Size     = UDim2.new(1,-28,1,0)
                 itemL.Position = UDim2.new(0,8,0,0)
-                itemL.ZIndex   = 103
+                itemL.ZIndex   = 203
 
                 if isSel then
                     local ck = lbl(itemF, "✓", theme.Accent, 10, Enum.Font.GothamBold, Enum.TextXAlignment.Center)
                     ck.Size     = UDim2.new(0,18,1,0)
                     ck.Position = UDim2.new(1,-20,0,0)
-                    ck.ZIndex   = 103
+                    ck.ZIndex   = 203
                 end
 
-                local ib = btn(itemF, UDim2.fromScale(1,1), nil, 104)
+                local ib = btn(itemF, UDim2.fromScale(1,1), nil, 204)
                 ib.MouseEnter:Connect(function() if not isSel then tw(itemF,{BackgroundColor3=theme.ElementHover}) end end)
                 ib.MouseLeave:Connect(function() if not isSel then tw(itemF,{BackgroundColor3=theme.Element}) end end)
                 ib.MouseButton1Click:Connect(function()
@@ -899,7 +924,7 @@ local function injectElements(Tab, theme, page, gui)
                     else
                         value = v
                         selLbl.Text = v
-                        closeList()
+                        doClose()
                         buildList()
                         task.spawn(function() pcall(cfg.Callback or function()end, value) end)
                     end
@@ -919,26 +944,17 @@ local function injectElements(Tab, theme, page, gui)
         end)
         mb.MouseButton1Click:Connect(function()
             if disabled then return end
-            if activeDropdownClose and activeDropdownClose ~= closeList then
-                activeDropdownClose()
-            end
-            open = not open
-            local ih = math.min(#values,6)*30+8
             if open then
-                activeDropdownClose = closeList
-                positionList()
-                tw(listCont,{Size=UDim2.new(0,104,0,ih)})
+                doClose()
             else
-                activeDropdownClose = nil
-                closeList()
+                doOpen()
             end
-            tw(chev,{Rotation=open and 180 or 0})
         end)
 
         if disabled then f.BackgroundTransparency=0.4 end
         f.Parent = page
 
-        local obj = {_frame=f, _close=closeList}
+        local obj = {_frame=f, _close=doClose}
         function obj:Get() return multi and selected or value end
         function obj:Set(v) if multi then selected=v else value=v end; selLbl.Text=getDisplay(); buildList() end
         function obj:Refresh(nv) values=nv; buildList() end
@@ -948,44 +964,54 @@ local function injectElements(Tab, theme, page, gui)
 
     function Tab:Paragraph(cfg)
         cfg = cfg or {}
+        local leftPad = (cfg.AccentBar and cfg.AccentBar ~= false) and 18 or 14
 
-        local f = Instance.new("Frame")
-        f.Size              = UDim2.new(1,0,0,0)
-        f.AutomaticSize     = Enum.AutomaticSize.Y
-        f.BackgroundColor3  = cfg.Color or theme.Element
-        f.BorderSizePixel   = 0
-        if cfg.Transparency then f.BackgroundTransparency=cfg.Transparency end
-        corner(f, CORNER_EL)
-        stroke(f, theme.ElementStroke, 1)
-        pad(f, 10,10,14,14)
+        local outer = Instance.new("Frame")
+        outer.Size             = UDim2.new(1,0,0,0)
+        outer.AutomaticSize    = Enum.AutomaticSize.Y
+        outer.BackgroundColor3 = cfg.Color or theme.Element
+        outer.BorderSizePixel  = 0
+        outer.ClipsDescendants = true
+        if cfg.Transparency then outer.BackgroundTransparency=cfg.Transparency end
+        corner(outer, CORNER_EL)
+        stroke(outer, theme.ElementStroke, 1)
 
-        if cfg.AccentBar then
-            local abar = frame(f, cfg.AccentBar, UDim2.new(0,3,1,0))
-            abar.Position = UDim2.new(0,-14,0,0)
+        if cfg.AccentBar and cfg.AccentBar ~= false then
+            local abar = frame(outer, cfg.AccentBar, UDim2.new(0,3,0,500))
+            abar.Position = UDim2.new(0,0,0,0)
+            abar.ZIndex   = 2
             corner(abar, UDim.new(0,2))
         end
 
+        local inner = Instance.new("Frame")
+        inner.Size             = UDim2.new(1,0,0,0)
+        inner.AutomaticSize    = Enum.AutomaticSize.Y
+        inner.BackgroundTransparency = 1
+        inner.BorderSizePixel  = 0
+        inner.Parent           = outer
+        pad(inner, 10,10,leftPad,14)
+
         local lay = Instance.new("UIListLayout")
         lay.Padding = UDim.new(0,5)
-        lay.Parent  = f
+        lay.Parent  = inner
 
         if cfg.Title and cfg.Title~="" then
-            local tl = lbl(f, cfg.Title, theme.TextPrimary, 13, Enum.Font.GothamBold)
+            local tl = lbl(inner, cfg.Title, theme.TextPrimary, 13, Enum.Font.GothamBold)
             tl.Size          = UDim2.new(1,0,0,0)
             tl.AutomaticSize = Enum.AutomaticSize.Y
             tl.TextWrapped   = true
             tl.TextYAlignment = Enum.TextYAlignment.Top
         end
         if cfg.Desc and cfg.Desc~="" then
-            local dl = lbl(f, cfg.Desc, theme.TextSecondary, 12, Enum.Font.Gotham)
+            local dl = lbl(inner, cfg.Desc, theme.TextSecondary, 12, Enum.Font.Gotham)
             dl.Size          = UDim2.new(1,0,0,0)
             dl.AutomaticSize = Enum.AutomaticSize.Y
             dl.TextWrapped   = true
             dl.TextYAlignment = Enum.TextYAlignment.Top
         end
 
-        f.Parent = page
-        return f
+        outer.Parent = page
+        return outer
     end
 
     function Tab:Divider(cfg)
@@ -1390,8 +1416,9 @@ local function injectElements(Tab, theme, page, gui)
         local disabled = cfg.Disabled or false
         local open     = false
 
-        local baseH = ELEMENT_H
-        if cfg.Desc and cfg.Desc ~= "" then baseH = baseH + 16 end
+        local baseH  = ELEMENT_H + (cfg.Desc and cfg.Desc ~= "" and 16 or 0)
+        local ROW_H  = 26
+        local PANEL_H = ROW_H*3 + 6*2 + 16 + 12
 
         local f = frame(page, cfg.Color or theme.Element, UDim2.new(1,0,0,baseH))
         f.BorderSizePixel  = 0
@@ -1407,28 +1434,16 @@ local function injectElements(Tab, theme, page, gui)
         corner(preview, CORNER_SM)
         stroke(preview, theme.ElementStroke, 1)
 
-        local PANEL_H = 22*3+6*2+20+24
-
-        local panelCont = frame(nil, theme.Element, UDim2.new(0,0,0,0))
-        panelCont.ClipsDescendants = true
-        panelCont.ZIndex           = 20
-        corner(panelCont, CORNER_EL)
-        stroke(panelCont, theme.ElementStroke, 1)
-
-        local function positionPanel()
-            if not gui then return end
-            panelCont.Parent = gui
-            local abs = f.AbsolutePosition
-            local sz  = f.AbsoluteSize
-            panelCont.Position = UDim2.new(0, abs.X, 0, abs.Y + sz.Y + 4)
-            panelCont.Size     = UDim2.new(0, sz.X, 0, 0)
-        end
+        local sep = frame(f, theme.ElementStroke, UDim2.new(1,0,0,1))
+        sep.Position = UDim2.new(0,0,0,baseH)
 
         local panelInner = Instance.new("Frame")
-        panelInner.Size = UDim2.fromScale(1,1)
+        panelInner.Size                = UDim2.new(1,0,0,PANEL_H)
+        panelInner.Position            = UDim2.new(0,0,0,baseH+1)
         panelInner.BackgroundTransparency = 1
-        panelInner.Parent = panelCont
-        pad(panelInner,10,10,12,12)
+        panelInner.ZIndex              = 4
+        panelInner.Parent              = f
+        pad(panelInner,8,8,0,0)
 
         local play = Instance.new("UIListLayout")
         play.Padding = UDim.new(0,6)
@@ -1442,10 +1457,14 @@ local function injectElements(Tab, theme, page, gui)
             task.spawn(function() pcall(cfg.Callback or function()end, value) end)
         end
 
-        local channels = {{name="R",idx=1,col=Color3.fromRGB(220,60,60)},{name="G",idx=2,col=Color3.fromRGB(60,200,80)},{name="B",idx=3,col=Color3.fromRGB(60,120,220)}}
+        local channels = {
+            {name="R",idx=1,col=Color3.fromRGB(220,60,60)},
+            {name="G",idx=2,col=Color3.fromRGB(60,200,80)},
+            {name="B",idx=3,col=Color3.fromRGB(60,120,220)},
+        }
 
         for _,ch in ipairs(channels) do
-            local row = frame(panelInner, Color3.fromRGB(0,0,0), UDim2.new(1,0,0,22))
+            local row = frame(panelInner, Color3.fromRGB(0,0,0), UDim2.new(1,0,0,ROW_H))
             row.BackgroundTransparency = 1
 
             local cl = lbl(row, ch.name, theme.TextSecondary, 10, Enum.Font.GothamBold)
@@ -1462,7 +1481,7 @@ local function injectElements(Tab, theme, page, gui)
             local th2 = frame(tr, Color3.fromRGB(255,255,255), UDim2.new(0,12,0,12))
             th2.AnchorPoint = Vector2.new(0.5,0.5)
             th2.Position    = UDim2.new(rgb[ch.idx]/255,0,0.5,0)
-            th2.ZIndex      = 3
+            th2.ZIndex      = 5
             corner(th2, UDim.new(1,0))
             stroke(th2, ch.col, 1.5)
 
@@ -1477,7 +1496,7 @@ local function injectElements(Tab, theme, page, gui)
             vi.TextXAlignment    = Enum.TextXAlignment.Center
             vi.ClearTextOnFocus  = true
             vi.BorderSizePixel   = 0
-            vi.ZIndex            = 21
+            vi.ZIndex            = 6
             corner(vi, UDim.new(0,3))
             vi.Parent = row
 
@@ -1493,7 +1512,7 @@ local function injectElements(Tab, theme, page, gui)
             local drag2 = false
             tr.InputBegan:Connect(function(i)
                 if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-                    drag2=true
+                    drag2=true; page.ScrollingEnabled=false
                     local r2=math.clamp((i.Position.X-tr.AbsolutePosition.X)/tr.AbsoluteSize.X,0,1)
                     rgb[ch.idx]=math.floor(r2*255); vi.Text=tostring(rgb[ch.idx])
                     tw(fi,{Size=UDim2.new(r2,0,1,0)},0.05); tw(th2,{Position=UDim2.new(r2,0,0.5,0)},0.05)
@@ -1510,25 +1529,25 @@ local function injectElements(Tab, theme, page, gui)
             end)
             UserInputService.InputEnded:Connect(function(i)
                 if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-                    drag2=false
+                    if drag2 then drag2=false; page.ScrollingEnabled=true end
                 end
             end)
         end
 
-        local b = btn(f, UDim2.fromScale(1,1), nil, 3)
-        b.MouseButton1Click:Connect(function()
+        local headerBtn = btn(f, UDim2.new(1,0,0,baseH), nil, 3)
+        headerBtn.MouseButton1Click:Connect(function()
             if disabled then return end
             open = not open
             if open then
-                positionPanel()
-                tw(panelCont,{Size=UDim2.new(0, f.AbsoluteSize.X, 0, PANEL_H)})
+                tw(f, {Size=UDim2.new(1,0,0,baseH+1+PANEL_H+8)})
+                tw(sep, {BackgroundColor3=theme.Accent}, ANIM_FAST)
             else
-                tw(panelCont,{Size=UDim2.new(0, f.AbsoluteSize.X, 0, 0)})
-                task.delay(0.18, function() if not open then panelCont.Parent=nil end end)
+                tw(f, {Size=UDim2.new(1,0,0,baseH)})
+                tw(sep, {BackgroundColor3=theme.ElementStroke}, ANIM_FAST)
             end
         end)
-        b.MouseEnter:Connect(function() if not disabled then tw(f,{BackgroundColor3=theme.ElementHover}) end end)
-        b.MouseLeave:Connect(function() if not disabled then tw(f,{BackgroundColor3=cfg.Color or theme.Element}) end end)
+        headerBtn.MouseEnter:Connect(function() if not disabled then tw(f,{BackgroundColor3=theme.ElementHover}) end end)
+        headerBtn.MouseLeave:Connect(function() if not disabled then tw(f,{BackgroundColor3=cfg.Color or theme.Element}) end end)
 
         if disabled then f.BackgroundTransparency=0.4 end
         f.Parent = page
@@ -1919,7 +1938,16 @@ function OriginUI:CreateWindow(config)
         end
     end
 
-    makeDraggable(topBar, win)
+    local dragZone = Instance.new("TextButton")
+    dragZone.Size               = UDim2.new(1,-100,0,TOPBAR_H)
+    dragZone.Position           = UDim2.new(0,0,0,0)
+    dragZone.BackgroundTransparency = 1
+    dragZone.Text               = ""
+    dragZone.BorderSizePixel    = 0
+    dragZone.AutoButtonColor    = false
+    dragZone.ZIndex             = 6
+    dragZone.Parent             = win
+    makeDraggable(dragZone, win)
     makeResizable(resizeH, win)
 
     local visible   = true
