@@ -2,8 +2,8 @@ local OriginUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/moon
 
 local Window = OriginUI:CreateWindow({
     Title      = "OriginUI Demo",
-    Subtitle   = "v1.0 · All Elements",
-    Icon       = "◈",
+    Subtitle   = "v1.0 · Test",
+    Icon       = "Star",
     Theme      = OriginUI.Themes.Default,
     ToggleKey  = Enum.KeyCode.RightAlt,
     Size       = Vector2.new(500, 320),
@@ -88,7 +88,7 @@ local statusCard = Home:Card({
 Home:Button({
     Title    = "Refresh Status",
     Desc     = "Check server connectivity",
-    Icon     = "↻",
+    Icon     = "Bluetooth",
     Callback = function()
         statusCard:SetValue("Checking…")
         task.wait(1.5)
