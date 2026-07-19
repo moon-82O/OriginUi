@@ -84,7 +84,7 @@ local function notify(gui, cfg, theme)
 	active += 1
 
 	local notif = Instance.new("Frame")
-	notif.Name = "OriginUI"
+	notif.Name = "Notif"
 	notif.Size = UDim2.new(1, 0, 0, NOTIFY_H)
 	notif.BackgroundColor3 = theme.Notify or Color3.fromRGB(18, 18, 18)
 	notif.BorderSizePixel = 0
