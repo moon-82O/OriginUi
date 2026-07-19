@@ -4,6 +4,7 @@ local Window = OriginUI:CreateWindow({
     Title      = "OriginUI Demo",
     Subtitle   = "v1.0 · All Elements",
     Icon       = "◈",
+    Size       = UDim2.fromOffset(450, 500),
     Theme      = OriginUI.Themes.Default,
     ToggleKey  = Enum.KeyCode.RightAlt,
 })
